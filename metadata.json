@@ -1,0 +1,5 @@
+{
+  "name": "TimeTravel StreetView Generator",
+  "description": "Generate a sequence of time travel / year progression image prompts and images using Google's Gemini APIs.",
+  "requestFramePermissions": []
+}
