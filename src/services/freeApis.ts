@@ -247,11 +247,40 @@ Return ONLY a JSON array with objects having "year" (integer) and "prompt" (stri
 
     if (!res.ok) throw new Error('Free prompt generation failed. Please try again.');
 
-    const text = cleanApiResponse(await res.text());
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error('Could not parse generated prompts. Please try again.');
+    let text = cleanApiResponse(await res.text());
+    // Remove markdown code fences if present
+    text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '');
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    // Try parsing as a complete JSON object or array first
+    let parsed: { year: number; prompt: string }[];
+    try {
+      const fullParsed = JSON.parse(text);
+      if (Array.isArray(fullParsed)) {
+        parsed = fullParsed;
+      } else if (fullParsed && typeof fullParsed === 'object') {
+        // API may wrap in object like {"prompts": [...]} or {"data": [...]}
+        const arrValue = Object.values(fullParsed).find(v => Array.isArray(v));
+        if (arrValue) {
+          parsed = arrValue as { year: number; prompt: string }[];
+        } else {
+          throw new Error('No array found in response object');
+        }
+      } else {
+        throw new Error('Unexpected response type');
+      }
+    } catch {
+      // Fallback: extract JSON array via regex
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error('Could not parse generated prompts. Please try again.');
+      // Handle string-escaped JSON (literal \n and \")
+      let jsonStr = jsonMatch[0];
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch {
+        jsonStr = jsonStr.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        parsed = JSON.parse(jsonStr);
+      }
+    }
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Invalid response format');
 
     return parsed.map((item: any) => ({
