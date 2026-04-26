@@ -1,6 +1,6 @@
-import React from 'react';
-import { AppState } from '../types';
-import { MapPin, Sparkles, Users, Image as ImageIcon, Settings2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { AppState, AIProvider } from '../types';
+import { MapPin, Sparkles, Users, Image as ImageIcon, Settings2, Key, Zap, Eye, EyeOff } from 'lucide-react';
 
 interface SidebarProps {
   state: AppState;
@@ -10,8 +10,79 @@ interface SidebarProps {
 }
 
 export function Sidebar({ state, updateState, onGenerateLocation, onGeneratePrompts }: SidebarProps) {
+  const [showApiKey, setShowApiKey] = useState(false);
+
   return (
     <aside className="w-64 bg-panel flex flex-col h-full shrink-0 overflow-y-auto">
+      {/* AI Provider Section */}
+      <div className="p-4 border-b border-border">
+        <h2 className="text-[10px] uppercase tracking-[1px] text-text-dim mb-3 flex justify-between items-center">
+          <span>AI PROVIDER</span>
+          <Zap size={12} className="text-accent" />
+        </h2>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <button
+            onClick={() => updateState({ aiProvider: 'free' as AIProvider })}
+            className={`py-2 text-[10px] font-bold uppercase tracking-[1px] rounded border transition-all ${
+              state.aiProvider === 'free'
+                ? 'bg-accent/20 border-accent text-accent'
+                : 'bg-[#1c1c1e] border-border text-text-dim hover:border-accent'
+            }`}
+          >
+            FREE
+          </button>
+          <button
+            onClick={() => updateState({ aiProvider: 'gemini' as AIProvider })}
+            className={`py-2 text-[10px] font-bold uppercase tracking-[1px] rounded border transition-all ${
+              state.aiProvider === 'gemini'
+                ? 'bg-accent/20 border-accent text-accent'
+                : 'bg-[#1c1c1e] border-border text-text-dim hover:border-accent'
+            }`}
+          >
+            GEMINI
+          </button>
+        </div>
+
+        {state.aiProvider === 'free' && (
+          <p className="text-[10px] text-text-dim leading-relaxed">
+            Powered by Pollinations.ai — no API key needed. Unlimited free image generation with consistency support.
+          </p>
+        )}
+
+        {state.aiProvider === 'gemini' && (
+          <div className="space-y-2">
+            <label className="block text-[10px] uppercase tracking-[1px] text-text-dim flex items-center gap-1">
+              <Key size={10} /> Gemini API Key
+            </label>
+            <div className="relative">
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                placeholder="Enter your Gemini API key"
+                value={state.geminiApiKey}
+                onChange={e => updateState({ geminiApiKey: e.target.value })}
+                className="w-full px-3 py-2 pr-8 bg-[#1c1c1e] border border-border rounded text-xs text-text-main focus:outline-none focus:border-accent"
+              />
+              <button
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-dim hover:text-text-main transition-colors"
+              >
+                {showApiKey ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+            </div>
+            {!state.geminiApiKey && (
+              <p className="text-[10px] text-red-400/80">
+                API key required for Gemini provider
+              </p>
+            )}
+            {state.geminiApiKey && (
+              <p className="text-[10px] text-green-400/80">
+                API key configured
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="p-4 border-b border-border">
         <h2 className="text-[10px] uppercase tracking-[1px] text-text-dim mb-4 flex justify-between items-center">
           <span>TIMELINE SETTINGS</span>
@@ -126,7 +197,11 @@ export function Sidebar({ state, updateState, onGenerateLocation, onGenerateProm
       </div>
 
       <div className="p-4 mt-auto">
-        <button onClick={onGeneratePrompts} disabled={state.isGeneratingPrompts || !state.locationDescription} className="w-full py-2 bg-accent text-black text-xs font-semibold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex justify-center items-center gap-2">
+        <button
+          onClick={onGeneratePrompts}
+          disabled={state.isGeneratingPrompts || !state.locationDescription || (state.aiProvider === 'gemini' && !state.geminiApiKey)}
+          className="w-full py-2 bg-accent text-black text-xs font-semibold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex justify-center items-center gap-2"
+        >
           {state.isGeneratingPrompts ? (
             <><span className="animate-spin">⏳</span> GENERATING...</>
           ) : (

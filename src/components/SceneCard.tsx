@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Scene } from '../types';
+import { Scene, AIProvider } from '../types';
 import { generateImage, editImage, analyzeImage } from '../services/gemini';
 import { Image as ImageIcon, Download, Wand2, Search, Edit3 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -11,17 +11,21 @@ interface SceneCardProps {
   total: number;
   aspectRatio: string;
   imageSize: string;
+  aiProvider: AIProvider;
+  consistencySeed: number;
   onUpdate: (updates: Partial<Scene>) => void;
 }
 
-export function SceneCard({ scene, index, total, aspectRatio, imageSize, onUpdate }: SceneCardProps) {
+export function SceneCard({ scene, index, total, aspectRatio, imageSize, aiProvider, consistencySeed, onUpdate }: SceneCardProps) {
   const [editPrompt, setEditPrompt] = useState('');
   const [showEdit, setShowEdit] = useState(false);
+
+  const sceneSeed = consistencySeed + index;
 
   const handleGenerateImage = async () => {
     onUpdate({ isGeneratingImage: true, imageError: undefined });
     try {
-      const imageUrl = await generateImage(scene.prompt, aspectRatio, imageSize);
+      const imageUrl = await generateImage(scene.prompt, aspectRatio, imageSize, aiProvider, sceneSeed);
       onUpdate({ imageUrl, isGeneratingImage: false });
     } catch (error: any) {
       onUpdate({ imageError: error.message, isGeneratingImage: false });
@@ -45,7 +49,7 @@ export function SceneCard({ scene, index, total, aspectRatio, imageSize, onUpdat
     if (!scene.imageUrl) return;
     onUpdate({ isAnalyzing: true });
     try {
-      const analysis = await analyzeImage(scene.imageUrl);
+      const analysis = await analyzeImage(scene.imageUrl, aiProvider);
       onUpdate({ analysis, isAnalyzing: false });
     } catch (error: any) {
       onUpdate({ analysis: `Error: ${error.message}`, isAnalyzing: false });
