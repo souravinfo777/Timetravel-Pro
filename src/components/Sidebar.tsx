@@ -115,7 +115,7 @@ export function Sidebar({ state, updateState, onGenerateLocation, onGenerateProm
             <input type="text" placeholder="e.g. Texas old yard" value={state.locationHint} onChange={e => updateState({ locationHint: e.target.value })} className="flex-1 px-3 py-2 bg-[#1c1c1e] border border-border rounded text-xs text-text-main focus:outline-none focus:border-accent" />
             <button 
               onClick={onGenerateLocation} 
-              disabled={state.isGeneratingLocation || !state.locationHint} 
+              disabled={state.isGeneratingLocation || !state.locationHint || (state.aiProvider === 'gemini' && !state.geminiApiKey)} 
               className="px-3 py-2 bg-[#252528] text-text-main border border-border rounded hover:border-accent disabled:opacity-50 transition-colors flex items-center justify-center" 
               title="AI Generate Location"
             >
