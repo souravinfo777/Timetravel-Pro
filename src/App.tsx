@@ -33,9 +33,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    if (state.geminiApiKey) {
-      setGeminiApiKey(state.geminiApiKey);
-    }
+    setGeminiApiKey(state.geminiApiKey);
   }, [state.geminiApiKey]);
 
   useEffect(() => {

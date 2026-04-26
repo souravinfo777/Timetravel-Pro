@@ -10,7 +10,7 @@ import {
 let cachedApiKey: string | null = null;
 
 export function setGeminiApiKey(key: string) {
-  cachedApiKey = key;
+  cachedApiKey = key || null;
 }
 
 export function getGeminiApiKey(): string | null {
