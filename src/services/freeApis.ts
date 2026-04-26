@@ -180,23 +180,33 @@ export async function generateFreeImage(
   });
 }
 
-// Use proxy in dev to avoid browser Origin header triggering deprecation notice
-const TEXT_API_URL = '/api/text/';
+// Authenticated Pollinations API endpoint (OpenAI-compatible)
+const TEXT_API_URL = 'https://text.pollinations.ai/openai';
+const POLLINATIONS_API_KEY = typeof process !== 'undefined' ? process.env.POLLINATIONS_API_KEY : '';
 
-// --- Clean degenerate text from API responses ---
-function cleanApiResponse(text: string): string {
-  if (text.includes('IMPORTANT NOTICE') && text.includes('deprecated')) {
-    throw new Error('API returned deprecation notice instead of content');
+// Helper to call the authenticated text API and extract content
+async function callTextApi(messages: { role: string; content: string }[], maxTokens: number): Promise<string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (POLLINATIONS_API_KEY) {
+    headers['Authorization'] = `Bearer ${POLLINATIONS_API_KEY}`;
   }
-  const lines = text.split('\n');
-  const cleanLines: string[] = [];
-  for (const line of lines) {
-    if (/^[.…?¨\s]{5,}$/.test(line)) break;
-    if (/[\u4e00-\u9fff\uac00-\ud7af]{3,}/.test(line)) break;
-    if (/\.{5,}/.test(line) || /…{3,}/.test(line)) break;
-    cleanLines.push(line);
-  }
-  return cleanLines.join('\n').replace(/\s+$/, '');
+
+  const res = await fetch(TEXT_API_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: 'openai',
+      messages,
+      max_tokens: maxTokens
+    })
+  });
+
+  if (!res.ok) throw new Error(`Text API request failed: ${res.status}`);
+
+  const json = await res.json();
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new Error('No content in API response');
+  return content;
 }
 
 // --- Free Prompt Generation using Pollinations Text API ---
@@ -231,34 +241,21 @@ Decay Level (0-100): ${decayLevel} (0=pristine, 100=completely ruined)
 Return ONLY a JSON array with objects having "year" (integer) and "prompt" (string). No markdown. Rules: same camera angle in every prompt, same buildings/layout, only vary aging/decay/weather by year and decay level, use "documentary photography, photorealistic, cinematic lighting" style.`;
 
   const attemptFetch = async (): Promise<{ year: number; prompt: string }[]> => {
-    const res = await fetch(TEXT_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: 'You are a helpful assistant that generates JSON.' },
-          { role: 'user', content: userPrompt }
-        ],
-        model: 'openai',
-        jsonMode: true,
-        max_tokens: 2000
-      })
-    });
+    const text = await callTextApi([
+      { role: 'system', content: 'You are a helpful assistant that generates JSON.' },
+      { role: 'user', content: userPrompt }
+    ], 2000);
 
-    if (!res.ok) throw new Error('Free prompt generation failed. Please try again.');
-
-    let text = cleanApiResponse(await res.text());
     // Remove markdown code fences if present
-    text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
-    // Try parsing as a complete JSON object or array first
+    // Try parsing as a complete JSON object or array
     let parsed: { year: number; prompt: string }[];
     try {
-      const fullParsed = JSON.parse(text);
+      const fullParsed = JSON.parse(cleaned);
       if (Array.isArray(fullParsed)) {
         parsed = fullParsed;
       } else if (fullParsed && typeof fullParsed === 'object') {
-        // API may wrap in object like {"prompts": [...]} or {"data": [...]}
         const arrValue = Object.values(fullParsed).find(v => Array.isArray(v));
         if (arrValue) {
           parsed = arrValue as { year: number; prompt: string }[];
@@ -269,17 +266,9 @@ Return ONLY a JSON array with objects having "year" (integer) and "prompt" (stri
         throw new Error('Unexpected response type');
       }
     } catch {
-      // Fallback: extract JSON array via regex
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error('Could not parse generated prompts. Please try again.');
-      // Handle string-escaped JSON (literal \n and \")
-      let jsonStr = jsonMatch[0];
-      try {
-        parsed = JSON.parse(jsonStr);
-      } catch {
-        jsonStr = jsonStr.replace(/\\n/g, '\n').replace(/\\"/g, '"');
-        parsed = JSON.parse(jsonStr);
-      }
+      parsed = JSON.parse(jsonMatch[0]);
     }
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Invalid response format');
 
@@ -299,22 +288,10 @@ Return ONLY a JSON array with objects having "year" (integer) and "prompt" (stri
 // --- Free Location Description ---
 export async function generateFreeLocationDescription(hint: string): Promise<string> {
   const attemptFetch = async (): Promise<string> => {
-    const res = await fetch(TEXT_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: 'You are a helpful assistant.' },
-          { role: 'user', content: `Describe the real-world location "${hint}" in one detailed paragraph for an image generation prompt. Include architecture, building materials, vegetation, street elements, lighting, and atmosphere. Output ONLY the description paragraph. Keep under 200 words.` }
-        ],
-        model: 'openai',
-        max_tokens: 400
-      })
-    });
-
-    if (!res.ok) throw new Error('Free location description generation failed');
-    const text = await res.text();
-    return cleanApiResponse(text);
+    return callTextApi([
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: `Describe the real-world location "${hint}" in one detailed paragraph for an image generation prompt. Include architecture, building materials, vegetation, street elements, lighting, and atmosphere. Output ONLY the description paragraph. Keep under 200 words.` }
+    ], 400);
   };
 
   try {
