@@ -26,15 +26,20 @@ export function SceneList({ state, updateState }: SceneListProps) {
   const handleGenerateAll = async () => {
     const scenesToGenerate = state.scenes.filter(scene => !scene.imageUrl && !scene.isGeneratingImage);
     
-    // Mark all as generating immediately
     scenesToGenerate.forEach(scene => {
       updateScene(scene.id, { isGeneratingImage: true, imageError: undefined });
     });
 
-    // Generate all images in parallel for much faster execution
-    await Promise.all(scenesToGenerate.map(async (scene) => {
+    await Promise.all(scenesToGenerate.map(async (scene, idx) => {
       try {
-        const imageUrl = await generateImage(scene.prompt, state.aspectRatio, state.imageSize);
+        const sceneSeed = state.consistencySeed + state.scenes.indexOf(scene);
+        const imageUrl = await generateImage(
+          scene.prompt,
+          state.aspectRatio,
+          state.imageSize,
+          state.aiProvider,
+          sceneSeed
+        );
         updateScene(scene.id, { imageUrl, isGeneratingImage: false });
       } catch (error: any) {
         updateScene(scene.id, { imageError: error.message, isGeneratingImage: false });
@@ -61,7 +66,6 @@ export function SceneList({ state, updateState }: SceneListProps) {
           </motion.div>
           <p className="text-lg animate-pulse">Thinking deeply about the timeline...</p>
           
-          {/* Skeleton Loaders */}
           <div className="w-full mt-12 space-y-8">
             {[1, 2, 3].map(i => (
               <div key={i} className="w-full h-64 bg-panel rounded border border-border animate-pulse flex">
@@ -144,6 +148,8 @@ export function SceneList({ state, updateState }: SceneListProps) {
                   total={state.scenes.length}
                   aspectRatio={state.aspectRatio}
                   imageSize={state.imageSize}
+                  aiProvider={state.aiProvider}
+                  consistencySeed={state.consistencySeed}
                   onUpdate={(updates) => updateScene(scene.id, updates)} 
                 />
               </motion.div>

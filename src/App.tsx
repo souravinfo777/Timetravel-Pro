@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { SceneList } from './components/SceneList';
 import { AppState, Scene } from './types';
-import { generatePrompts, generateLocationDescription } from './services/gemini';
+import { generatePrompts, generateLocationDescription, setGeminiApiKey } from './services/gemini';
+import { generateConsistencySeed } from './services/freeApis';
 import { Copy, Code } from 'lucide-react';
 
 export default function App() {
@@ -21,8 +22,26 @@ export default function App() {
     scenes: [],
     isGeneratingPrompts: false,
     isGeneratingLocation: false,
-    places: []
+    places: [],
+    aiProvider: 'free',
+    geminiApiKey: '',
+    historicalFacts: [],
+    isLoadingFacts: false,
+    weatherData: [],
+    isLoadingWeather: false,
+    consistencySeed: Date.now()
   });
+
+  useEffect(() => {
+    setGeminiApiKey(state.geminiApiKey);
+  }, [state.geminiApiKey]);
+
+  useEffect(() => {
+    if (state.locationDescription) {
+      const seed = generateConsistencySeed(state.locationDescription);
+      setState(prev => ({ ...prev, consistencySeed: seed }));
+    }
+  }, [state.locationDescription]);
 
   const updateState = (updates: Partial<AppState> | ((prev: AppState) => Partial<AppState>)) => {
     setState(prev => {
@@ -35,7 +54,7 @@ export default function App() {
     if (!state.locationHint) return;
     updateState({ isGeneratingLocation: true, globalError: undefined });
     try {
-      const { description, places } = await generateLocationDescription(state.locationHint);
+      const { description, places } = await generateLocationDescription(state.locationHint, state.aiProvider);
       updateState({ locationDescription: description, places, isGeneratingLocation: false });
     } catch (error: any) {
       updateState({ globalError: error.message, isGeneratingLocation: false });
@@ -45,7 +64,7 @@ export default function App() {
   const handleGeneratePrompts = async () => {
     updateState({ isGeneratingPrompts: true, globalError: undefined });
     try {
-      const prompts = await generatePrompts(state);
+      const prompts = await generatePrompts(state, state.aiProvider);
       const scenes: Scene[] = prompts.map((p: any, i: number) => ({
         id: `scene-${i}-${Date.now()}`,
         year: p.year,
@@ -77,6 +96,9 @@ export default function App() {
       <header className="h-14 bg-panel border-b border-border px-5 flex justify-between items-center shrink-0 z-10">
         <div className="font-bold tracking-tight flex items-center gap-2 text-[15px]">
           TIMETRAVEL<span className="text-accent">PRO</span>
+          <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full border border-border text-text-dim font-normal">
+            {state.aiProvider === 'free' ? 'FREE AI' : 'GEMINI'}
+          </span>
         </div>
         <div className="flex gap-6 text-[13px] font-medium">
             <div className="text-accent">WORKSPACE</div>
@@ -109,6 +131,13 @@ export default function App() {
               <div className="h-full flex flex-col items-center justify-center text-text-dim">
                 <div className="text-6xl mb-4 opacity-20">🕰️</div>
                 <p className="text-lg">Configure settings and generate prompts to begin.</p>
+                <p className="text-sm mt-2 opacity-60">
+                  {state.aiProvider === 'free' 
+                    ? 'Using Free AI (Pollinations.ai) — no API key needed' 
+                    : state.geminiApiKey 
+                      ? 'Using Gemini AI — API key configured' 
+                      : 'Switch to Free AI or enter your Gemini API key to start'}
+                </p>
               </div>
             ) : (
               <SceneList state={state} updateState={updateState} />
