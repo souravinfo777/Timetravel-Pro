@@ -180,8 +180,14 @@ export async function generateFreeImage(
   });
 }
 
+// Use proxy in dev to avoid browser Origin header triggering deprecation notice
+const TEXT_API_URL = '/api/text/';
+
 // --- Clean degenerate text from API responses ---
 function cleanApiResponse(text: string): string {
+  if (text.includes('IMPORTANT NOTICE') && text.includes('deprecated')) {
+    throw new Error('API returned deprecation notice instead of content');
+  }
   const lines = text.split('\n');
   const cleanLines: string[] = [];
   for (const line of lines) {
@@ -216,38 +222,21 @@ export async function generateFreePrompts(params: {
     }
   }
 
-  const systemPrompt = `You are a prompt engineer for AI image generation specializing in time-travel sequences. Generate exactly ${numImages} image prompts. Return ONLY a valid JSON array with objects having "year" (integer) and "prompt" (string) fields. No markdown, no explanation, just the JSON array.
-
-CRITICAL CONSISTENCY RULES:
-- Every prompt MUST begin with the EXACT same camera angle, framing, and perspective description
-- The core structural elements (buildings, terrain, roads) MUST be described identically across all prompts
-- Only vary temporal elements: aging, weathering, decay, vegetation growth/overgrowth, lighting changes
-- Use the same photographic style throughout: "documentary photography, photorealistic, cinematic lighting"
-- Include consistent architectural details and materials in every prompt`;
-
-  const userPrompt = `Generate ${numImages} image prompts for years: ${years.join(', ')}.
+  const userPrompt = `Generate exactly ${numImages} image prompts for a time-travel sequence at years: ${years.join(', ')}.
 
 Location: ${locationDescription}
 Characters: ${charactersEnabled ? `${numPeople} people. Notes: ${characterNotes}` : 'No people.'}
-Decay Level (0-100): ${decayLevel} (0 = pristine, 100 = completely ruined by final year)
+Decay Level (0-100): ${decayLevel} (0=pristine, 100=completely ruined)
 
-Rules:
-1. EXACT same camera angle in every prompt (start each with identical angle description)
-2. Core buildings and layout described identically
-3. Only change weather, aging, decay, overgrowth based on year and decay level
-4. Include "Text overlay: [YEAR]" at end of each prompt
-5. Each prompt must be a detailed paragraph for image generation
-6. Maintain consistent lighting direction and photographic style`;
-
-  const url = `https://text.pollinations.ai/`;
+Return ONLY a JSON array with objects having "year" (integer) and "prompt" (string). No markdown. Rules: same camera angle in every prompt, same buildings/layout, only vary aging/decay/weather by year and decay level, use "documentary photography, photorealistic, cinematic lighting" style.`;
 
   const attemptFetch = async (): Promise<{ year: number; prompt: string }[]> => {
-    const res = await fetch(url, {
+    const res = await fetch(TEXT_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: 'You are a helpful assistant that generates JSON.' },
           { role: 'user', content: userPrompt }
         ],
         model: 'openai',
@@ -280,23 +269,30 @@ Rules:
 
 // --- Free Location Description ---
 export async function generateFreeLocationDescription(hint: string): Promise<string> {
-  const url = `https://text.pollinations.ai/`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages: [
-        { role: 'system', content: 'You are a location description expert for image generation. Provide a highly detailed physical description suitable for photorealistic image prompts. Include architecture, building materials, vegetation, street elements, lighting, and atmosphere. Output ONLY the description paragraph, nothing else. Keep it under 200 words. Focus on consistent, repeatable visual elements.' },
-        { role: 'user', content: `Describe this real-world location in detail for image generation: "${hint}"` }
-      ],
-      model: 'openai',
-      max_tokens: 400
-    })
-  });
+  const attemptFetch = async (): Promise<string> => {
+    const res = await fetch(TEXT_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: 'You are a helpful assistant.' },
+          { role: 'user', content: `Describe the real-world location "${hint}" in one detailed paragraph for an image generation prompt. Include architecture, building materials, vegetation, street elements, lighting, and atmosphere. Output ONLY the description paragraph. Keep under 200 words.` }
+        ],
+        model: 'openai',
+        max_tokens: 400
+      })
+    });
 
-  if (!res.ok) throw new Error('Free location description generation failed');
-  const text = await res.text();
-  return cleanApiResponse(text);
+    if (!res.ok) throw new Error('Free location description generation failed');
+    const text = await res.text();
+    return cleanApiResponse(text);
+  };
+
+  try {
+    return await attemptFetch();
+  } catch {
+    return await attemptFetch();
+  }
 }
 
 // --- Free Image Analysis ---
