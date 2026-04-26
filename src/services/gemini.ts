@@ -146,7 +146,15 @@ export async function generateImage(
   throw new Error("No image generated");
 }
 
-export async function editImage(base64Image: string, editPrompt: string): Promise<string> {
+export async function editImage(
+  base64Image: string,
+  editPrompt: string,
+  provider: AIProvider = 'free'
+): Promise<string> {
+  if (provider === 'free') {
+    throw new Error('Image editing requires the Gemini AI provider. Switch to Gemini in the sidebar and enter your API key to use this feature.');
+  }
+
   const ai = getAI();
   const mimeType = base64Image.split(';')[0].split(':')[1];
   const data = base64Image.split(',')[1];

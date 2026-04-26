@@ -36,7 +36,7 @@ export function SceneCard({ scene, index, total, aspectRatio, imageSize, aiProvi
     if (!scene.imageUrl || !editPrompt) return;
     onUpdate({ isEditing: true, imageError: undefined });
     try {
-      const newImageUrl = await editImage(scene.imageUrl, editPrompt);
+      const newImageUrl = await editImage(scene.imageUrl, editPrompt, aiProvider);
       onUpdate({ imageUrl: newImageUrl, isEditing: false });
       setEditPrompt('');
       setShowEdit(false);
