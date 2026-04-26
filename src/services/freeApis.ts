@@ -180,6 +180,19 @@ export async function generateFreeImage(
   });
 }
 
+// --- Clean degenerate text from API responses ---
+function cleanApiResponse(text: string): string {
+  const lines = text.split('\n');
+  const cleanLines: string[] = [];
+  for (const line of lines) {
+    if (/^[.…?¨\s]{5,}$/.test(line)) break;
+    if (/[\u4e00-\u9fff\uac00-\ud7af]{3,}/.test(line)) break;
+    if (/\.{5,}/.test(line) || /…{3,}/.test(line)) break;
+    cleanLines.push(line);
+  }
+  return cleanLines.join('\n').replace(/\s+$/, '');
+}
+
 // --- Free Prompt Generation using Pollinations Text API ---
 export async function generateFreePrompts(params: {
   startYear: number;
@@ -227,32 +240,42 @@ Rules:
 6. Maintain consistent lighting direction and photographic style`;
 
   const url = `https://text.pollinations.ai/`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      model: 'openai',
-      jsonMode: true
-    })
-  });
 
-  if (!res.ok) throw new Error('Free prompt generation failed. Please try again.');
+  const attemptFetch = async (): Promise<{ year: number; prompt: string }[]> => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        model: 'openai',
+        jsonMode: true,
+        max_tokens: 2000
+      })
+    });
 
-  const text = await res.text();
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not parse generated prompts. Please try again.');
+    if (!res.ok) throw new Error('Free prompt generation failed. Please try again.');
 
-  const parsed = JSON.parse(jsonMatch[0]);
-  if (!Array.isArray(parsed)) throw new Error('Invalid response format');
+    const text = cleanApiResponse(await res.text());
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('Could not parse generated prompts. Please try again.');
 
-  return parsed.map((item: any) => ({
-    year: typeof item.year === 'number' ? item.year : parseInt(item.year) || years[0],
-    prompt: String(item.prompt || '')
-  }));
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Invalid response format');
+
+    return parsed.map((item: any) => ({
+      year: typeof item.year === 'number' ? item.year : parseInt(item.year) || years[0],
+      prompt: String(item.prompt || '')
+    }));
+  };
+
+  try {
+    return await attemptFetch();
+  } catch {
+    return await attemptFetch();
+  }
 }
 
 // --- Free Location Description ---
@@ -263,15 +286,17 @@ export async function generateFreeLocationDescription(hint: string): Promise<str
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: [
-        { role: 'system', content: 'You are a location description expert for image generation. Provide highly detailed physical descriptions suitable for photorealistic image prompts. Include architecture, building materials, vegetation, street elements, lighting, and atmosphere. No conversational text, just the description. Focus on consistent, repeatable visual elements.' },
+        { role: 'system', content: 'You are a location description expert for image generation. Provide a highly detailed physical description suitable for photorealistic image prompts. Include architecture, building materials, vegetation, street elements, lighting, and atmosphere. Output ONLY the description paragraph, nothing else. Keep it under 200 words. Focus on consistent, repeatable visual elements.' },
         { role: 'user', content: `Describe this real-world location in detail for image generation: "${hint}"` }
       ],
-      model: 'openai'
+      model: 'openai',
+      max_tokens: 400
     })
   });
 
   if (!res.ok) throw new Error('Free location description generation failed');
-  return await res.text();
+  const text = await res.text();
+  return cleanApiResponse(text);
 }
 
 // --- Free Image Analysis ---
